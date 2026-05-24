@@ -1,0 +1,2 @@
+scenario,frames,mean_fps,mean_latency_ms,raw_messages,context_messages,decision_messages,context_reduction_percent,decision_reduction_percent,total_reduction_percent,mean_priority_score
+C3_S1_static_person,680,11.58,85.68,1067,33,15,96.91,54.55,98.59,0.764

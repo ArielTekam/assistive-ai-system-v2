@@ -1,0 +1,2 @@
+scenario,frames,mean_fps,mean_latency_ms,total_detections
+S5_multi_person,663,11.3,87.81,2294

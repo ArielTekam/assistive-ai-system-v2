@@ -1,0 +1,2 @@
+tracker,scenario,run_id,frames,mean_fps,mean_latency_ms,mean_cpu_percent,total_detections,total_objects,unique_ids,avg_track_duration,stable_tracks_ratio,raw_messages,filtered_messages,decision_messages,mean_priority_score,output_csv
+bytetrack,S4_walking_real,1,1745,11.74,85.37,58.13,1576,1397,104,13.43,0.096,1397,162,35,0.701,Experiments/results_csv/TRACK_bytetrack_S4_walking_real_run01.csv

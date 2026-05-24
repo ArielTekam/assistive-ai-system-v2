@@ -1,0 +1,2 @@
+model,scenario,run_id,imgsz,frames,mean_fps,min_fps,max_fps,mean_latency_ms,min_latency_ms,max_latency_ms,mean_cpu_percent,mean_detections_per_frame,total_detections,output_csv
+yolov5nu,S4_walking_real,1,320,1745,11.8,2.33,12.12,84.93,82.51,428.6,55.16,0.88,1533,Experiments/results_csv/YOLO_yolov5nu_S4_walking_real_img320_run01.csv

@@ -1,0 +1,2 @@
+scenario,frames,mean_fps,mean_latency_ms,raw_messages,filtered_messages,blocked_messages,reduction_percent
+S3_approach,681,11.61,85.51,826,83,743,89.95

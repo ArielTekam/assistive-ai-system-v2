@@ -1,0 +1,2 @@
+scenario,frames,mean_fps,mean_latency_ms,total_detections
+S3_approach,675,11.49,86.34,2987

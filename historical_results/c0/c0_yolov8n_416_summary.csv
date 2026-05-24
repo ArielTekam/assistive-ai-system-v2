@@ -1,0 +1,2 @@
+model,resolution,duration_s,frames,fps_mean,latency_mean_ms,cpu_mean_percent,ram_mean_percent,temperature_mean_c,detections_mean
+yolov8n.pt,416,60,309,5.33,187.7,47.16,16.17,52.22,1.02

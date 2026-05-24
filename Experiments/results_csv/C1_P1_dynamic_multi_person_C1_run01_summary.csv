@@ -1,0 +1,2 @@
+phase,scenario,run_id,frames,mean_fps,mean_latency_ms,mean_cpu_percent,total_detections,raw_messages,filtered_messages,decision_messages,raw_decision_messages,mean_priority_score,output_csv
+C1,P1_dynamic_multi_person_C1,1,1739,13.47,74.57,71.6,4523,0,0,0,0,0,Experiments/results_csv/C1_P1_dynamic_multi_person_C1_run01.csv

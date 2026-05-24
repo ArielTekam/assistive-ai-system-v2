@@ -1,0 +1,2 @@
+phase,scenario,run_id,frames,mean_fps,mean_latency_ms,mean_cpu_percent,total_detections,raw_messages,filtered_messages,decision_messages,raw_decision_messages,mean_priority_score,output_csv
+C3,S4_walking_real_safe_true,1,1745,11.76,85.09,58.56,1977,1977,312,10,38,0.614,Experiments/results_csv/C3_S4_walking_real_safe_true_run01.csv

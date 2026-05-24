@@ -1,0 +1,2 @@
+model,resolution,duration_s,frames,fps_mean,latency_mean_ms,cpu_mean_percent,ram_mean_percent,temperature_mean_c,detections_mean,active_tracks_mean
+yolo11n.pt,320,60,530,9.26,108.02,55.34,16.13,53.22,1.37,2.12

@@ -1,0 +1,2 @@
+scenario,frames,mean_fps,mean_latency_ms,raw_messages,context_messages,decision_messages,audio_accepted,audio_spoken,audio_dropped,audio_repeated_blocked,total_reduction_percent
+C4_S4_dynamic_real_audio,613,11.29,88.4,1016,89,29,28,19,9,1,97.15

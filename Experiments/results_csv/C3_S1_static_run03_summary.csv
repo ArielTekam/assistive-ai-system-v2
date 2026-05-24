@@ -1,0 +1,2 @@
+phase,scenario,run_id,frames,mean_fps,mean_latency_ms,mean_cpu_percent,total_detections,raw_messages,filtered_messages,decision_messages,mean_priority_score,output_csv
+C3,S1_static,3,1767,11.94,83.77,58.47,1775,1775,19,15,0.786,Experiments/results_csv/C3_S1_static_run03.csv

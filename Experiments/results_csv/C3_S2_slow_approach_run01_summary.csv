@@ -1,0 +1,2 @@
+phase,scenario,run_id,frames,mean_fps,mean_latency_ms,mean_cpu_percent,total_detections,raw_messages,filtered_messages,decision_messages,mean_priority_score,output_csv
+C3,S2_slow_approach,1,1732,11.99,83.43,58.61,3327,3327,85,24,0.723,Experiments/results_csv/C3_S2_slow_approach_run01.csv

@@ -1,0 +1,2 @@
+phase,scenario,run_id,frames,mean_fps,mean_latency_ms,mean_cpu_percent,total_detections,raw_messages,filtered_messages,decision_messages,mean_priority_score,output_csv
+C2,S4_walking_real,3,1745,12.0,83.37,58.51,1977,1977,312,0,0,Experiments/results_csv/C2_S4_walking_real_run03.csv

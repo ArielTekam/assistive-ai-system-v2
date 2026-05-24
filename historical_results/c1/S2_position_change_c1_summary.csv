@@ -1,0 +1,2 @@
+scenario,frames,mean_fps,mean_latency_ms,total_detections,mean_active_tracks,unique_track_ids
+S2_position_change,683,11.64,85.32,730,1.07,34

@@ -1,0 +1,2 @@
+model,resolution,duration_s,frames,fps_mean,latency_mean_ms,cpu_mean_percent,ram_mean_percent,temperature_mean_c,raw_messages_total,context_messages_total,message_reduction_percent
+yolo11n.pt,320,60,542,9.48,105.57,55.89,16.17,53.35,880,13,98.52

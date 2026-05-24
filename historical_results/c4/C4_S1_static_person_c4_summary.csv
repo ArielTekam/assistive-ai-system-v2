@@ -1,0 +1,2 @@
+scenario,frames,mean_fps,mean_latency_ms,raw_messages,context_messages,decision_messages,audio_accepted,audio_spoken,audio_dropped,audio_repeated_blocked,total_reduction_percent
+C4_S1_static_person,688,11.72,84.57,744,24,13,13,13,0,0,98.25

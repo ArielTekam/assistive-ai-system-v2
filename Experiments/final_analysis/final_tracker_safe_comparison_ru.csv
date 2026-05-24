@@ -1,0 +1,4 @@
+version,fps,latency,unique_ids,filtered_messages,decision_messages
+Старый трекер,11.67,85.73,198,312,38
+ByteTrack,11.74,85.37,104,162,35
+ByteTrack + SAFE,11.76,85.09,104,162,10

@@ -1,0 +1,2 @@
+scenario,frames,mean_fps,mean_latency_ms,total_detections
+S0_empty,675,11.49,86.31,2298

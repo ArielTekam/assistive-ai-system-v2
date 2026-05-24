@@ -1,0 +1,2 @@
+tracker,scenario,run_id,frames,mean_fps,mean_latency_ms,mean_cpu_percent,total_detections,total_objects,unique_ids,avg_track_duration,stable_tracks_ratio,raw_messages,filtered_messages,decision_messages,mean_priority_score,output_csv
+bytetrack,S3_multi_person,1,1749,11.52,87.0,58.05,5185,5185,58,89.4,0.362,5185,158,81,0.711,Experiments/results_csv/TRACK_bytetrack_S3_multi_person_run01.csv

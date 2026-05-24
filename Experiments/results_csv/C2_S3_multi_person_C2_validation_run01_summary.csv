@@ -1,0 +1,2 @@
+phase,scenario,run_id,frames,mean_fps,mean_latency_ms,mean_cpu_percent,total_detections,raw_messages,filtered_messages,decision_messages,raw_decision_messages,mean_priority_score,output_csv
+C2,S3_multi_person_C2_validation,1,1749,11.76,85.11,58.4,5611,5611,234,0,0,0,Experiments/results_csv/C2_S3_multi_person_C2_validation_run01.csv

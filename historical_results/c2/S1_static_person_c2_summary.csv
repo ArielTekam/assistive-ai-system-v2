@@ -1,0 +1,2 @@
+scenario,frames,mean_fps,mean_latency_ms,raw_messages,filtered_messages,blocked_messages,reduction_percent
+S1_static_person,684,11.65,85.2,1574,39,1535,97.52

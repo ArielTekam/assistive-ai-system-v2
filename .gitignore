@@ -1,0 +1,36 @@
+# Virtual environment
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Temporary outputs
+outputs/
+
+# Logs
+Experiments/raw_logs/
+
+# Experimental videos
+Experiments/videos/
+
+# Large media files
+*.MOV
+*.mp4
+*.avi
+
+# YOLO / ONNX models
+models/*.pt
+models/*.onnx
+
+# Images generated during debugging
+*.jpg
+*.png
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Environment variables
+.env
