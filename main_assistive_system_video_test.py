@@ -410,16 +410,4 @@ print(f"Финальные RAW C3 решения: {raw_decision_total}")
 print(f"Финальные SAFE решения: {safe_decision_total}")
 
 if raw_decision_total > 0:
-    reduction = 100 * (1 - safe_decision_total / raw_decision_total)
-    print(f"Снижение после SAFE: {reduction:.1f} %")
-else:
-    print("Снижение после SAFE: N/A")
-
-print("\n--- Аудио ---")
-print(f"Озвученные сообщения: {spoken_count}")
-print(f"Отброшенные сообщения: {dropped_count}")
-print(f"Заблокированные повторы: {repeated_blocked_count}")
-print(f"Ошибки TTS: {tts_error_count}")
-print(f"Размер аудиоочереди: {queue_size}")
-
-print("============================================")
+    reduction = 100 * (1 - safe_dec 

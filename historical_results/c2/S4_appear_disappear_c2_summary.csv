@@ -1,2 +1,0 @@
-scenario,frames,mean_fps,mean_latency_ms,raw_messages,filtered_messages,blocked_messages,reduction_percent
-S4_appear_disappear,684,11.66,85.08,1031,63,968,93.89

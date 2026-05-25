@@ -1,2 +1,0 @@
-scenario,frames,mean_fps,mean_latency_ms,raw_messages,context_messages,decision_messages,context_reduction_percent,decision_reduction_percent,total_reduction_percent,mean_priority_score
-S3_approach,670,11.49,86.91,1971,145,96,92.64,33.79,95.13,0.708

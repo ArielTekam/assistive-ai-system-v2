@@ -1,2 +1,0 @@
-scenario,frames,mean_fps,mean_latency_ms,total_detections,mean_active_tracks,unique_track_ids
-S1_static_person,682,11.62,85.41,682,1.0,1

@@ -1,2 +1,0 @@
-scenario,frames,mean_fps,mean_latency_ms,total_detections,mean_active_tracks,unique_track_ids
-S4_appear_disappear,671,11.43,86.8,605,0.9,15

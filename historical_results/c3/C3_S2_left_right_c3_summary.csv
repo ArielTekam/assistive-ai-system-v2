@@ -1,2 +1,0 @@
-scenario,frames,mean_fps,mean_latency_ms,raw_messages,context_messages,decision_messages,context_reduction_percent,decision_reduction_percent,total_reduction_percent,mean_priority_score
-C3_S2_left_right,686,11.67,85.04,942,57,31,93.95,45.61,96.71,0.637
