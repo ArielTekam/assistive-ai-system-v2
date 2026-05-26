@@ -12,25 +12,47 @@ from core.safe_decision_filter import SafeDecisionFilter
 from core.temporal_stabilizer import TemporalStabilizer
 
 
+# ============================================================
+# Основной видеотест полного когнитивного пайплайна
+# Raspberry Pi 5 + YOLO11n + ByteTrack + C2 + C3 + SAFE + Audio
+# ============================================================
+
 parser = argparse.ArgumentParser()
-parser.add_argument("--video", required=True)
-parser.add_argument("--display", action="store_true")
+parser.add_argument("--video", required=True, help="Путь к тестовому видео")
+parser.add_argument("--display", action="store_true", help="Показать окно OpenCV")
 args = parser.parse_args()
 
 VIDEO_PATH = args.video
 PHASE = "C4_SAFE_AUDIO"
 
+# ------------------------------------------------------------
+# Параметры видеопотока
+# ------------------------------------------------------------
+
 FRAME_WIDTH = 640
 FRAME_HEIGHT = 480
 
+# ------------------------------------------------------------
+# Пороговые значения для модуля принятия решений
+# ------------------------------------------------------------
+
 PRIORITY_THRESHOLD = 0.45
 HIGH_PRIORITY_THRESHOLD = 0.70
+
+# ------------------------------------------------------------
+# Параметры повторного объявления в статичной сцене
+# ------------------------------------------------------------
 
 STATIC_REANNOUNCE_COOLDOWN = 18.0
 VERY_CLOSE_THRESHOLD = 0.75
 
 
 def get_temperature():
+    """
+    Получает текущую температуру Raspberry Pi через vcgencmd.
+
+    Если команда недоступна, возвращается -1.0.
+    """
     try:
         temp = subprocess.check_output(
             ["vcgencmd", "measure_temp"]
@@ -45,6 +67,14 @@ def get_temperature():
 
 
 def compute_direction(bbox):
+    """
+    Определяет приблизительное направление объекта в кадре.
+
+    Возвращает:
+    - left   : объект слева
+    - center : объект по центру
+    - right  : объект справа
+    """
     x1, y1, x2, y2 = bbox
     cx = (x1 + x2) / 2
 
@@ -52,10 +82,21 @@ def compute_direction(bbox):
         return "left"
     elif cx > FRAME_WIDTH * 0.66:
         return "right"
+
     return "center"
 
 
 def compute_proximity(bbox):
+    """
+    Оценивает относительную близость объекта.
+
+    Используются два признака:
+    1. нормализованная площадь bounding box;
+    2. нижняя координата объекта в кадре.
+
+    Это не метрическая дистанция в метрах,
+    а эвристическая оценка близости.
+    """
     x1, y1, x2, y2 = bbox
 
     box_area = max(0, x2 - x1) * max(0, y2 - y1)
@@ -73,6 +114,17 @@ def compute_proximity(bbox):
 
 
 def is_scene_static(objects, previous_objects, proximity_delta_threshold=0.04):
+    """
+    Проверяет, является ли сцена относительно статичной.
+
+    Логика:
+    - если большинство объектов сохранили похожую близость,
+      сцена считается статичной;
+    - если объекты существенно изменились,
+      сцена считается динамичной.
+
+    Эта функция используется для уменьшения повторных аудиообъявлений.
+    """
     if not objects:
         return True
 
@@ -82,10 +134,12 @@ def is_scene_static(objects, previous_objects, proximity_delta_threshold=0.04):
     for obj_id, obj in objects.items():
         if obj_id in previous_objects:
             total_count += 1
+
             prev_prox = previous_objects[obj_id].get(
                 "proximity",
                 obj["proximity"]
             )
+
             curr_prox = obj.get("proximity", prev_prox)
 
             if abs(curr_prox - prev_prox) < proximity_delta_threshold:
@@ -97,6 +151,11 @@ def is_scene_static(objects, previous_objects, proximity_delta_threshold=0.04):
     return stable_count / total_count >= 0.75
 
 
+# ============================================================
+# Инициализация основных модулей системы
+# ============================================================
+
+# Детекция объектов + трекинг ByteTrack
 tracker = ByteTrackDetector(
     model_path="yolo11n.pt",
     conf_threshold=0.25,
@@ -104,16 +163,22 @@ tracker = ByteTrackDetector(
     tracker_config="bytetrack.yaml"
 )
 
+# Контекстный фильтр C2:
+# уменьшает повторы и микроколебания сцены
 context_manager = ContextManager(
     cooldown_seconds=10.0,
     min_proximity_change=0.15
 )
 
+# Модуль принятия решений C3:
+# выбирает события, достаточно важные для озвучивания
 decision_engine = DecisionEngine(
     priority_threshold=PRIORITY_THRESHOLD,
     high_priority_threshold=HIGH_PRIORITY_THRESHOLD
 )
 
+# Асинхронный аудиомодуль:
+# отделяет генерацию речи от обработки видео
 audio_manager = AudioManager(
     speech_duration=0.2,
     max_queue_size=2,
@@ -123,6 +188,8 @@ audio_manager = AudioManager(
     speed=145
 )
 
+# SAFE-фильтр:
+# последняя когнитивная защита перед аудио
 safe_filter = SafeDecisionFilter(
     global_cooldown=7.0,
     same_message_cooldown=15.0,
@@ -130,11 +197,18 @@ safe_filter = SafeDecisionFilter(
     max_messages_per_cycle=1
 )
 
+# Временная стабилизация объектов:
+# уменьшает скачки направления и близости
 temporal_stabilizer = TemporalStabilizer(
     min_seen_frames=8,
     direction_window=8,
     proximity_alpha=0.65
 )
+
+
+# ============================================================
+# Переменные состояния эксперимента
+# ============================================================
 
 previous_proximity = {}
 previous_objects_state = {}
@@ -153,6 +227,11 @@ temperature_values = []
 
 unique_track_ids = set()
 
+
+# ============================================================
+# Открытие видеопотока
+# ============================================================
+
 cap = cv2.VideoCapture(VIDEO_PATH)
 
 if not cap.isOpened():
@@ -160,21 +239,27 @@ if not cap.isOpened():
     audio_manager.stop()
     exit()
 
+
 print("============================================")
 print("ЗАПУСК ВИДЕОТЕСТА СИСТЕМЫ")
 print("============================================")
 print(f"Фаза тестирования: {PHASE}")
 print("Детекция: YOLO11n")
 print("Трекинг: ByteTrack включён")
-print("Контекстная память: C2 включена")
-print("Движок принятия решений: C3 включён")
-print("Фильтр SAFE: включён")
+print("Контекстный фильтр C2 включён")
+print("Модуль принятия решений C3 включён")
+print("SAFE-фильтр включён")
 print("Аудио: асинхронное TTS включено")
 print(f"Видео: {VIDEO_PATH}")
 print("Нажмите Q для остановки при включённом display")
 print("============================================")
 
+
 try:
+    # ========================================================
+    # Главный цикл обработки видеопотока
+    # ========================================================
+
     while True:
         ret, frame = cap.read()
 
@@ -183,6 +268,10 @@ try:
 
         frame = cv2.resize(frame, (FRAME_WIDTH, FRAME_HEIGHT))
         frame_start = time.time()
+
+        # ----------------------------------------------------
+        # C1: детекция объектов + трекинг ByteTrack
+        # ----------------------------------------------------
 
         tracked_objects = tracker.track(frame)
 
@@ -218,10 +307,22 @@ try:
 
         total_objects_detected += len(objects)
 
+        # ----------------------------------------------------
+        # Временная стабилизация объектов
+        # ----------------------------------------------------
+
         objects = temporal_stabilizer.update(objects)
+
+        # ----------------------------------------------------
+        # C2: контекстная фильтрация
+        # ----------------------------------------------------
 
         context_result = context_manager.filter_messages(objects)
         context_messages = context_result["messages"]
+
+        # ----------------------------------------------------
+        # C3: принятие решений
+        # ----------------------------------------------------
 
         decisions = decision_engine.decide(
             context_messages=context_messages,
@@ -231,7 +332,15 @@ try:
         final_messages = [d["message"] for d in decisions]
         raw_decision_total += len(final_messages)
 
+        # ----------------------------------------------------
+        # SAFE: финальная фильтрация перед аудио
+        # ----------------------------------------------------
+
         candidate_safe_messages = safe_filter.filter(final_messages)
+
+        # ----------------------------------------------------
+        # Проверка статичности сцены
+        # ----------------------------------------------------
 
         scene_static = is_scene_static(
             objects,
@@ -240,6 +349,13 @@ try:
 
         current_time = time.time()
         safe_messages = []
+
+        # ----------------------------------------------------
+        # Логика повторного объявления:
+        # - если сцена статична, сообщения подавляются;
+        # - если объект очень близко, сообщение разрешается;
+        # - если сцена динамична, SAFE-сообщения проходят дальше.
+        # ----------------------------------------------------
 
         if scene_static:
             has_very_close_object = any(
@@ -265,20 +381,36 @@ try:
 
         safe_decision_total += len(safe_messages)
 
+        # ----------------------------------------------------
+        # Сохранение состояния объектов для следующего кадра
+        # ----------------------------------------------------
+
         previous_objects_state = {
             obj_id: obj.copy()
             for obj_id, obj in objects.items()
         }
 
+        # ----------------------------------------------------
+        # Асинхронная генерация аудио
+        # ----------------------------------------------------
+
         for msg in safe_messages:
             print("[АУДИО_ОЧЕРЕДЬ]", msg)
             audio_manager.speak(msg)
+
+        # ----------------------------------------------------
+        # Расчёт производительности
+        # ----------------------------------------------------
 
         latency_ms = (time.time() - frame_start) * 1000
         fps = 1000.0 / max(latency_ms, 1e-6)
 
         fps_values.append(fps)
         latency_values.append(latency_ms)
+
+        # ----------------------------------------------------
+        # Сбор системных метрик Raspberry Pi
+        # ----------------------------------------------------
 
         if frame_count % 30 == 0:
             cpu_values.append(psutil.cpu_percent(interval=None))
@@ -291,6 +423,10 @@ try:
             if temperature > 0:
                 temperature_values.append(temperature)
 
+        # ----------------------------------------------------
+        # Текущий лог обработки кадра
+        # ----------------------------------------------------
+
         print(
             f"Кадр:{frame_count} | "
             f"FPS:{fps:.2f} | "
@@ -301,6 +437,10 @@ try:
             f"SAFE:{safe_decision_total} | "
             f"Текущие_SAFE:{safe_messages}"
         )
+
+        # ----------------------------------------------------
+        # Отображение окна OpenCV при параметре --display
+        # ----------------------------------------------------
 
         if args.display:
             for obj in tracked_objects:
@@ -361,9 +501,19 @@ try:
 except KeyboardInterrupt:
     print("СИСТЕМА ОСТАНОВЛЕНА ПОЛЬЗОВАТЕЛЕМ")
 
+
+# ============================================================
+# Завершение видеопотока и аудиосистемы
+# ============================================================
+
 cap.release()
 cv2.destroyAllWindows()
 audio_manager.stop()
+
+
+# ============================================================
+# Расчёт итоговых метрик
+# ============================================================
 
 mean_fps = sum(fps_values) / len(fps_values) if fps_values else 0
 mean_latency = sum(latency_values) / len(latency_values) if latency_values else 0
@@ -380,6 +530,11 @@ dropped_count = audio_stats.get("dropped_count", "N/A")
 repeated_blocked_count = audio_stats.get("repeated_blocked_count", "N/A")
 tts_error_count = audio_stats.get("tts_error_count", "N/A")
 queue_size = audio_stats.get("queue_size", "N/A")
+
+
+# ============================================================
+# Финальная статистика эксперимента
+# ============================================================
 
 print("\n============================================")
 print("ИТОГОВАЯ СТАТИСТИКА ВИДЕОТЕСТА")
@@ -405,9 +560,21 @@ print("\n--- Перцепция и трекинг ---")
 print(f"Всего обнаруженных объектов: {total_objects_detected}")
 print(f"Уникальные ID трекинга: {len(unique_track_ids)}")
 
-print("\n--- Когнитивный pipeline ---")
+print("\n--- Когнитивный пайплайн ---")
 print(f"Финальные RAW C3 решения: {raw_decision_total}")
 print(f"Финальные SAFE решения: {safe_decision_total}")
 
 if raw_decision_total > 0:
-    reduction = 100 * (1 - safe_dec 
+    reduction = 100 * (1 - safe_decision_total / raw_decision_total)
+    print(f"Снижение после SAFE: {reduction:.1f} %")
+else:
+    print("Снижение после SAFE: N/A")
+
+print("\n--- Аудио ---")
+print(f"Озвученные сообщения: {spoken_count}")
+print(f"Отброшенные сообщения: {dropped_count}")
+print(f"Заблокированные повторы: {repeated_blocked_count}")
+print(f"Ошибки TTS: {tts_error_count}")
+print(f"Размер аудиоочереди: {queue_size}")
+
+print("============================================")

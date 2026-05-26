@@ -3,14 +3,15 @@ import time
 
 class SafeDecisionFilter:
     """
-    C3 SAFE MODE v2
+    SAFE-ФИЛЬТР C3 — версия 2
 
-    Filtre final avant audio.
-    Il réduit :
-    - les répétitions exactes ;
-    - les messages similaires ;
-    - les oscillations left/center/right ;
-    - la surcharge audio.
+    Финальный фильтр перед генерацией аудио.
+
+    Основные функции:
+    - подавление повторяющихся сообщений;
+    - удаление схожих уведомлений;
+    - стабилизация направлений (лево/центр/право);
+    - снижение когнитивной и аудионагрузки.
     """
 
     def __init__(
@@ -81,13 +82,16 @@ class SafeDecisionFilter:
             last_msg_time = self.last_message_time.get(msg, 0.0)
             last_family_time = self.last_family_time.get(family, 0.0)
 
+            # Глобальная временная стабилизация
             if not critical:
                 if now - self.last_global_time < self.global_cooldown:
                     continue
 
+            # Подавление одинаковых сообщений
             if now - last_msg_time < self.same_message_cooldown:
                 continue
 
+            # Подавление схожих категорий объектов
             if not critical:
                 if now - last_family_time < self.same_object_family_cooldown:
                     continue
@@ -98,6 +102,7 @@ class SafeDecisionFilter:
             self.last_family_time[family] = now
             self.last_global_time = now
 
+            # Ограничение количества аудиосообщений за цикл
             if len(accepted) >= self.max_messages_per_cycle:
                 break
 
