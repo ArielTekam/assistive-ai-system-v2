@@ -1,5 +1,7 @@
 import cv2
 import time
+import subprocess
+import psutil
 
 from core.bytetrack_detector import ByteTrackDetector
 from core.context_manager import ContextManager
@@ -9,8 +11,13 @@ from core.safe_decision_filter import SafeDecisionFilter
 from core.temporal_stabilizer import TemporalStabilizer
 
 
+# ============================================================
+# ОСНОВНОЙ LIVE-СКРИПТ СИСТЕМЫ
+# Raspberry Pi 5 + Camera + YOLO11n + ByteTrack + C2 + C3 + SAFE + Audio
+# ============================================================
+
 CAMERA_ID = 0
-PHASE = "C3"
+PHASE = "C4_SAFE_AUDIO"
 
 FRAME_WIDTH = 640
 FRAME_HEIGHT = 480
@@ -18,8 +25,37 @@ FRAME_HEIGHT = 480
 PRIORITY_THRESHOLD = 0.45
 HIGH_PRIORITY_THRESHOLD = 0.70
 
+STATIC_REANNOUNCE_COOLDOWN = 18.0
+VERY_CLOSE_THRESHOLD = 0.75
+
+
+# ============================================================
+# СЛУЖЕБНЫЕ ФУНКЦИИ
+# ============================================================
+
+def get_temperature():
+    """
+    Получение температуры Raspberry Pi.
+    Если команда vcgencmd недоступна, возвращается -1.0.
+    """
+    try:
+        temp = subprocess.check_output(
+            ["vcgencmd", "measure_temp"]
+        ).decode()
+
+        temp = temp.replace("temp=", "")
+        temp = temp.replace("'C\n", "")
+        return float(temp)
+
+    except Exception:
+        return -1.0
+
 
 def compute_direction(bbox):
+    """
+    Определяет примерное положение объекта:
+    left / center / right.
+    """
     x1, y1, x2, y2 = bbox
     cx = (x1 + x2) / 2
 
@@ -27,10 +63,20 @@ def compute_direction(bbox):
         return "left"
     elif cx > FRAME_WIDTH * 0.66:
         return "right"
+
     return "center"
 
 
 def compute_proximity(bbox):
+    """
+    Эвристическая оценка близости объекта.
+
+    Используются:
+    - площадь bounding box;
+    - нижняя координата объекта в кадре.
+
+    Это не метрическая дистанция, а относительный показатель близости.
+    """
     x1, y1, x2, y2 = bbox
 
     box_area = max(0, x2 - x1) * max(0, y2 - y1)
@@ -46,6 +92,42 @@ def compute_proximity(bbox):
 
     return round(proximity, 3)
 
+
+def is_scene_static(objects, previous_objects, proximity_delta_threshold=0.04):
+    """
+    Проверяет, является ли сцена статичной.
+
+    Сцена считается статичной, если большинство объектов
+    сохраняют близкие значения proximity между кадрами.
+    """
+    if not objects:
+        return True
+
+    stable_count = 0
+    total_count = 0
+
+    for obj_id, obj in objects.items():
+        if obj_id in previous_objects:
+            total_count += 1
+
+            prev_prox = previous_objects[obj_id].get(
+                "proximity",
+                obj["proximity"]
+            )
+            curr_prox = obj.get("proximity", prev_prox)
+
+            if abs(curr_prox - prev_prox) < proximity_delta_threshold:
+                stable_count += 1
+
+    if total_count == 0:
+        return False
+
+    return stable_count / total_count >= 0.75
+
+
+# ============================================================
+# ИНИЦИАЛИЗАЦИЯ МОДУЛЕЙ PIPELINE
+# ============================================================
 
 tracker = ByteTrackDetector(
     model_path="yolo11n.pt",
@@ -86,40 +168,76 @@ temporal_stabilizer = TemporalStabilizer(
     proximity_alpha=0.65
 )
 
-previous_proximity = {}
 
+# ============================================================
+# ПЕРЕМЕННЫЕ СОСТОЯНИЯ
+# ============================================================
+
+previous_proximity = {}
+previous_objects_state = {}
+last_static_announcement_time = 0
+
+frame_count = 0
+total_objects_detected = 0
 raw_decision_total = 0
 safe_decision_total = 0
+
+fps_values = []
+latency_values = []
+cpu_values = []
+ram_values = []
+temperature_values = []
+
+unique_track_ids = set()
+
+
+# ============================================================
+# ЗАПУСК КАМЕРЫ
+# ============================================================
 
 cap = cv2.VideoCapture(CAMERA_ID)
 cap.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT)
 
 if not cap.isOpened():
-    print("ERROR: camera not accessible")
+    print("ОШИБКА: камера недоступна")
     audio_manager.stop()
     exit()
 
 
-print("=================================")
-print("ASSISTIVE AI SYSTEM STARTED")
-print("ByteTrack ENABLED")
-print("Audio async ENABLED")
-print("SAFE TRUE counters ENABLED")
-print("Phase:", PHASE)
-print("Press Q to stop")
-print("=================================")
+print("============================================")
+print("ЗАПУСК ASSISTIVE AI SYSTEM V2")
+print("============================================")
+print(f"Фаза: {PHASE}")
+print("Камера: включена")
+print("Детекция: YOLO11n")
+print("Трекинг: ByteTrack включён")
+print("Контекстный фильтр C2 включён")
+print("Модуль принятия решений C3 включён")
+print("SAFE-фильтр включён")
+print("Аудио: асинхронное TTS включено")
+print("Нажмите Q для остановки")
+print("============================================")
 
 
 try:
+    # ========================================================
+    # ГЛАВНЫЙ ЦИКЛ ОБРАБОТКИ КАМЕРЫ
+    # ========================================================
+
     while True:
         ret, frame = cap.read()
 
         if not ret:
-            print("ERROR: camera frame not received")
+            print("ОШИБКА: кадр с камеры не получен")
             break
 
+        frame = cv2.resize(frame, (FRAME_WIDTH, FRAME_HEIGHT))
         frame_start = time.time()
+
+        # ----------------------------------------------------
+        # C1: детекция объектов и ByteTrack-трекинг
+        # ----------------------------------------------------
 
         tracked_objects = tracker.track(frame)
 
@@ -131,6 +249,8 @@ try:
             if track_id is None:
                 continue
 
+            unique_track_ids.add(track_id)
+
             bbox = obj["bbox"]
             proximity = compute_proximity(bbox)
 
@@ -141,49 +261,125 @@ try:
                 "bbox": bbox,
                 "direction": compute_direction(bbox),
                 "proximity": proximity,
-                "previous_proximity": previous_proximity.get(track_id, proximity),
+                "previous_proximity": previous_proximity.get(
+                    track_id,
+                    proximity
+                ),
                 "risk_score": proximity,
                 "missing_frames": 0,
             }
 
             previous_proximity[track_id] = proximity
 
+        total_objects_detected += len(objects)
+
+        # ----------------------------------------------------
+        # Временная стабилизация объектов
+        # ----------------------------------------------------
+
         objects = temporal_stabilizer.update(objects)
 
-        final_messages = []
+        # ----------------------------------------------------
+        # C2: контекстная фильтрация
+        # ----------------------------------------------------
+
+        context_result = context_manager.filter_messages(objects)
+        context_messages = context_result["messages"]
+
+        # ----------------------------------------------------
+        # C3: принятие решений
+        # ----------------------------------------------------
+
+        decisions = decision_engine.decide(
+            context_messages=context_messages,
+            objects=objects
+        )
+
+        final_messages = [d["message"] for d in decisions]
+        raw_decision_total += len(final_messages)
+
+        # ----------------------------------------------------
+        # SAFE: финальная фильтрация перед аудио
+        # ----------------------------------------------------
+
+        candidate_safe_messages = safe_filter.filter(final_messages)
+
+        # ----------------------------------------------------
+        # Проверка статичности сцены
+        # ----------------------------------------------------
+
+        scene_static = is_scene_static(
+            objects,
+            previous_objects_state
+        )
+
+        current_time = time.time()
         safe_messages = []
 
-        if PHASE == "C1":
-            final_messages = []
-
-        elif PHASE == "C2":
-            context_result = context_manager.filter_messages(objects)
-            final_messages = context_result["messages"]
-
-        elif PHASE == "C3":
-            context_result = context_manager.filter_messages(objects)
-            context_messages = context_result["messages"]
-
-            decisions = decision_engine.decide(
-                context_messages=context_messages,
-                objects=objects
+        if scene_static:
+            has_very_close_object = any(
+                obj.get("proximity", 0) >= VERY_CLOSE_THRESHOLD
+                for obj in objects.values()
             )
 
-            final_messages = [d["message"] for d in decisions]
+            if has_very_close_object:
+                safe_messages = candidate_safe_messages
+            else:
+                if (
+                    current_time - last_static_announcement_time
+                    >= STATIC_REANNOUNCE_COOLDOWN
+                ):
+                    safe_messages = candidate_safe_messages[:1]
 
-            raw_decision_total += len(final_messages)
-
-            safe_messages = safe_filter.filter(final_messages)
-
-            safe_decision_total += len(safe_messages)
-
+                    if safe_messages:
+                        last_static_announcement_time = current_time
+                else:
+                    safe_messages = []
         else:
-            final_messages = []
+            safe_messages = candidate_safe_messages
+
+        safe_decision_total += len(safe_messages)
+
+        previous_objects_state = {
+            obj_id: obj.copy()
+            for obj_id, obj in objects.items()
+        }
+
+        # ----------------------------------------------------
+        # Асинхронная генерация аудио
+        # ----------------------------------------------------
+
+        for msg in safe_messages:
+            print("[АУДИО_ОЧЕРЕДЬ]", msg)
+            audio_manager.speak(msg)
+
+        # ----------------------------------------------------
+        # Метрики производительности
+        # ----------------------------------------------------
+
+        latency_ms = (time.time() - frame_start) * 1000
+        fps = 1000.0 / max(latency_ms, 1e-6)
+
+        fps_values.append(fps)
+        latency_values.append(latency_ms)
+
+        if frame_count % 30 == 0:
+            cpu_values.append(psutil.cpu_percent(interval=None))
+
+            ram = psutil.virtual_memory()
+            ram_used_gb = ram.used / (1024 ** 3)
+            ram_values.append(ram_used_gb)
+
+            temperature = get_temperature()
+            if temperature > 0:
+                temperature_values.append(temperature)
+
+        # ----------------------------------------------------
+        # Визуализация detections / tracking
+        # ----------------------------------------------------
 
         for obj in tracked_objects:
-            bbox = obj["bbox"]
-            x1, y1, x2, y2 = map(int, bbox)
-
+            x1, y1, x2, y2 = map(int, obj["bbox"])
             label = obj["label"]
             track_id = obj.get("track_id", -1)
 
@@ -205,6 +401,10 @@ try:
                 2
             )
 
+        # ----------------------------------------------------
+        # Отображение сообщений SAFE на экране
+        # ----------------------------------------------------
+
         y_offset = 30
 
         for msg in safe_messages:
@@ -220,56 +420,128 @@ try:
 
             y_offset += 30
 
-            print("[AUDIO_QUEUE]", msg)
-            audio_manager.speak(msg)
-
-        fps = 1.0 / max(time.time() - frame_start, 1e-6)
-
         cv2.putText(
             frame,
-            f"FPS: {fps:.2f}",
+            f"FPS:{fps:.2f}",
             (20, FRAME_HEIGHT - 20),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.7,
+            0.65,
             (255, 255, 0),
             2
         )
 
         cv2.putText(
             frame,
-            f"RAW_C3: {raw_decision_total} | SAFE: {safe_decision_total}",
+            f"RAW_C3:{raw_decision_total} | SAFE:{safe_decision_total}",
             (20, FRAME_HEIGHT - 50),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.7,
+            0.65,
+            (255, 255, 0),
+            2
+        )
+
+        cv2.putText(
+            frame,
+            f"STATIC:{scene_static}",
+            (20, FRAME_HEIGHT - 80),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.65,
             (255, 255, 0),
             2
         )
 
         print(
+            f"Кадр:{frame_count} | "
             f"FPS:{fps:.2f} | "
-            f"Objects:{len(objects)} | "
+            f"Задержка:{latency_ms:.1f} мс | "
+            f"Объекты:{len(objects)} | "
+            f"Сцена_статична:{scene_static} | "
             f"RawC3:{raw_decision_total} | "
             f"SAFE:{safe_decision_total} | "
-            f"CurrentSafe:{safe_messages}"
+            f"Текущие_SAFE:{safe_messages}"
         )
 
-        cv2.imshow("Assistive AI System", frame)
+        cv2.imshow("Assistive AI System V2", frame)
 
         key = cv2.waitKey(1) & 0xFF
 
         if key == ord("q"):
             break
 
-except KeyboardInterrupt:
-    print("SYSTEM INTERRUPTED")
+        frame_count += 1
 
+except KeyboardInterrupt:
+    print("СИСТЕМА ОСТАНОВЛЕНА ПОЛЬЗОВАТЕЛЕМ")
+
+
+# ============================================================
+# ЗАВЕРШЕНИЕ РАБОТЫ
+# ============================================================
 
 cap.release()
 cv2.destroyAllWindows()
 audio_manager.stop()
 
-print("=================================")
-print("SYSTEM STOPPED")
-print(f"Final RAW_C3 decisions: {raw_decision_total}")
-print(f"Final SAFE decisions: {safe_decision_total}")
-print("=================================")
+
+# ============================================================
+# ИТОГОВАЯ СТАТИСТИКА
+# ============================================================
+
+mean_fps = sum(fps_values) / len(fps_values) if fps_values else 0
+mean_latency = sum(latency_values) / len(latency_values) if latency_values else 0
+max_latency = max(latency_values) if latency_values else 0
+
+mean_cpu = sum(cpu_values) / len(cpu_values) if cpu_values else 0
+mean_ram = sum(ram_values) / len(ram_values) if ram_values else 0
+mean_temp = sum(temperature_values) / len(temperature_values) if temperature_values else -1
+
+audio_stats = audio_manager.get_stats() if hasattr(audio_manager, "get_stats") else {}
+
+spoken_count = audio_stats.get("spoken_count", "N/A")
+dropped_count = audio_stats.get("dropped_count", "N/A")
+repeated_blocked_count = audio_stats.get("repeated_blocked_count", "N/A")
+tts_error_count = audio_stats.get("tts_error_count", "N/A")
+queue_size = audio_stats.get("queue_size", "N/A")
+
+
+print("\n============================================")
+print("ИТОГОВАЯ СТАТИСТИКА LIVE-СИСТЕМЫ")
+print("============================================")
+
+print(f"Фаза: {PHASE}")
+
+print("\n--- Производительность ---")
+print(f"Обработано кадров: {frame_count}")
+print(f"Средний FPS: {mean_fps:.2f}")
+print(f"Средняя задержка: {mean_latency:.2f} мс")
+print(f"Максимальная задержка: {max_latency:.2f} мс")
+print(f"Средняя загрузка CPU: {mean_cpu:.1f} %")
+print(f"Среднее использование RAM: {mean_ram:.2f} GB")
+
+if mean_temp > 0:
+    print(f"Средняя температура Raspberry Pi: {mean_temp:.1f} °C")
+else:
+    print("Средняя температура Raspberry Pi: недоступна")
+
+print("\n--- Перцепция и трекинг ---")
+print(f"Всего обнаруженных объектов: {total_objects_detected}")
+print(f"Уникальные ID трекинга: {len(unique_track_ids)}")
+
+print("\n--- Когнитивный пайплайн ---")
+print(f"Финальные RAW C3 решения: {raw_decision_total}")
+print(f"Финальные SAFE решения: {safe_decision_total}")
+
+if raw_decision_total > 0:
+    reduction = 100 * (1 - safe_decision_total / raw_decision_total)
+    print(f"Снижение после SAFE: {reduction:.1f} %")
+else:
+    print("Снижение после SAFE: N/A")
+
+print("\n--- Аудио ---")
+print(f"Озвученные сообщения: {spoken_count}")
+print(f"Отброшенные сообщения: {dropped_count}")
+print(f"Заблокированные повторы: {repeated_blocked_count}")
+print(f"Ошибки TTS: {tts_error_count}")
+print(f"Размер аудиоочереди: {queue_size}")
+
+print("============================================")
