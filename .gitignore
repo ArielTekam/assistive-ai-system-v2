@@ -34,3 +34,8 @@ Thumbs.db
 
 # Environment variables
 .env
+# Model weights
+*.pt
+*.onnx
+models/*.pt
+models/*.onnx
